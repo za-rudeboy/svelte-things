@@ -1,0 +1,3 @@
+[functions]
+    directory = "netifly/functions"
+    node_bundler = "esbuild"
