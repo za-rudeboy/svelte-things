@@ -1,26 +1,63 @@
 import { Handler } from '@netlify/functions';
+import { getStore, Store } from '@netlify/blobs';
 
-const handler: Handler = async (event, context) => {
+const CACHE_KEY = 'oauth_token';
+const CACHE_NAME = 'auth-tokens';
+const CACHE_DURATION = 40 * 60 * 1000; // 40 minutes
+
+export default async function handler(request, context) {
 	const CLIENT_ID = process.env.OAUTH_CLIENT_ID!;
 	const CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET!;
 	const TOKEN_URL = process.env.OAUTH_TOKEN_URL!;
+	const SCOPE = process.env.TOKEN_SCOPE!;
 
-	const response = await fetch(TOKEN_URL, {
+	const store = getStore({
+		siteID: 'rudeboydotcom',
+		token: process.env.NETLIFY_PAT!,
+		name: CACHE_NAME
+	});
+
+	const cachedData = await store.get(CACHE_KEY);
+	if (cachedData) {
+		const { token, expiresAt } = JSON.parse(cachedData);
+		if (expiresAt > Date.now()) {
+			return new Response(JSON.stringify({ token }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
+	}
+
+	const response = await getJwt(TOKEN_URL, CLIENT_ID, CLIENT_SECRET, SCOPE);
+	const data = await response.json();
+	await storeTokenInCache(store, data);
+
+	return new Response(JSON.stringify({ token: data.access_token }), {
+		status: 200,
+		headers: { 'Content-Type': 'application/json' }
+	});
+}
+
+async function getJwt(token_url: string, client_id: string, client_secret: string, scope: string) {
+	return await fetch(token_url, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 		body: new URLSearchParams({
-			client_id: CLIENT_ID,
-			client_secret: CLIENT_SECRET,
-			grant_type: 'client_credentials'
+			client_id: client_id,
+			client_secret: client_secret,
+			grant_type: 'client_credentials',
+			scope: scope
 		})
 	});
+}
 
-    const data = await response.json();
+async function storeTokenInCache(store: Store, data: any) {
+	await store.set(
+		CACHE_KEY,
+		JSON.stringify({
+			token: data.access_token,
+			expiresAt: Date.now() + CACHE_DURATION
+		})
+	);
+}
 
-    return {
-        statusCode: 200,
-        body: JSON.stringify({ token: data.access_token }),
-      };
-};
-
-export { handler };
