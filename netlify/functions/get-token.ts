@@ -1,11 +1,19 @@
-import { Handler } from '@netlify/functions';
 import { getStore, Store } from '@netlify/blobs';
+
+interface TokenResponse {
+	token: string;
+}
+
+interface CacheEntry {
+	token: string;
+	expiresAt: number;
+}
 
 const CACHE_KEY = 'oauth_token';
 const CACHE_NAME = 'auth-tokens';
 const CACHE_DURATION = 40 * 60 * 1000; // 40 minutes
 
-export default async function handler(request, context) {
+export default async function handler(request, context): Promise<Response> {
 	const CLIENT_ID = process.env.OAUTH_CLIENT_ID!;
 	const CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET!;
 	const TOKEN_URL = process.env.OAUTH_TOKEN_URL!;
@@ -21,7 +29,7 @@ export default async function handler(request, context) {
 	if (cachedData) {
 		const { token, expiresAt } = JSON.parse(cachedData);
 		if (expiresAt > Date.now()) {
-			return new Response(JSON.stringify({ token }), {
+			return new Response(JSON.stringify({ token } satisfies TokenResponse), {
 				status: 200,
 				headers: { 'Content-Type': 'application/json' }
 			});
@@ -32,7 +40,7 @@ export default async function handler(request, context) {
 	const data = await response.json();
 	await storeTokenInCache(store, data);
 
-	return new Response(JSON.stringify({ token: data.access_token }), {
+	return new Response(JSON.stringify({ token: data.access_token } satisfies TokenResponse), {
 		status: 200,
 		headers: { 'Content-Type': 'application/json' }
 	});
@@ -52,12 +60,14 @@ async function getJwt(token_url: string, client_id: string, client_secret: strin
 }
 
 async function storeTokenInCache(store: Store, data: any) {
+
+	const cacheEntry: CacheEntry = {
+		token: data.access_token,
+		expiresAt: Date.now() + CACHE_DURATION
+	  };
+
 	await store.set(
 		CACHE_KEY,
-		JSON.stringify({
-			token: data.access_token,
-			expiresAt: Date.now() + CACHE_DURATION
-		})
+		JSON.stringify(cacheEntry)
 	);
 }
-
