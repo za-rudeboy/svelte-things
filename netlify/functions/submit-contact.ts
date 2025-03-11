@@ -12,8 +12,6 @@ export default async function handler(
   context: Context
 ): Promise<Response> {
   try {
-    // The method is available directly on the request object
-    console.log('Request method:', request.method);
 
     if (request.method !== 'POST') {
       return new Response(JSON.stringify({ error: 'Method not allowed' }), {
